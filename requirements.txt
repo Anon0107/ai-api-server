@@ -1,0 +1,6 @@
+fastapi
+pydantic
+anthropic
+voyageai
+chromadb
+python-dotenv
