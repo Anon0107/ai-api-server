@@ -1,6 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import anthropic
 import voyageai
 import chromadb
@@ -8,7 +8,9 @@ from dotenv import load_dotenv
 import os
 import textwrap
 import json
+import time
 import asyncio
+from collections import defaultdict
 
 load_dotenv()
 app = FastAPI()
@@ -19,38 +21,56 @@ chroma_client = chromadb.CloudClient(
     tenant = os.getenv('CHROMA_TENANT')
 )
 ant_client = anthropic.AsyncAnthropic()
+request_log = defaultdict(list)
+API_KEY = os.getenv('API_KEY')
+
+def check_rate_limit(client_ip: str):
+    current = time.time()
+    back = current - 60
+    request_log[client_ip] = [t for t in request_log[client_ip] if t > back]
+    if len(request_log[client_ip]) >= 10:
+        raise(HTTPException(status_code = 429, detail = 'Rate limit exceeded'))
+    request_log[client_ip].append(current)
+
+def check_auth(api_key: str = Header(None)):
+    if api_key != API_KEY:
+        raise(HTTPException(status_code = 401, detail= 'Invalid or missing APi key'))
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(...,min_length = 1,max_length = 10000)
 
 @app.post('/chat')
-async def post_chat(request: ChatRequest):
+async def post_chat(body: ChatRequest, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    check_rate_limit(request.client.host)
     response = await ant_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=1024,
         system='You are a helpful assistant that responds gracefully.',
-        messages=[{'role': 'user', 'content': request.message}]
+        messages=[{'role': 'user', 'content': body.message}]
     )
     reply = next((b.text for b in response.content if b.type == 'text'), 'No response')
     return {
-        'message': request.message,
+        'message': body.message,
         'response': reply,
         'input_tokens': response.usage.input_tokens,
         'output_tokens': response.usage.output_tokens
     }
 
 class AnalyzeRequest(BaseModel):
-    article: str
+    article: str = Field(...,min_length = 10, max_length =10000)
 
 @app.post('/analyze')
-async def post_analyze(request: AnalyzeRequest):
+async def post_analyze(body: AnalyzeRequest, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    check_rate_limit(request.client.host)
     response = await ant_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=1024,
         system='You are an article analyzer. Respond only with a valid JSON object. No explanation. No prose.',
         messages=[
             {'role': 'user', 'content': textwrap.dedent(f'''
-                <article>{request.article}</article>
+                <article>{body.article}</article>
                 <structure>
                 {{
                     "summary": "one line summary",
@@ -66,48 +86,52 @@ async def post_analyze(request: AnalyzeRequest):
         return {'error': 'No response from model'}
     parsed = json.loads('{' + reply)
     return {
-        'article': request.article,
+        'article': body.article,
         'response': parsed,
         'input_tokens': response.usage.input_tokens,
         'output_tokens': response.usage.output_tokens
     }
 
 class SearchRequest(BaseModel):
-    query: str
-    n_results: int = 3
+    query: str = Field(...,min_length= 1, max_length= 100)
+    n_results: int = Field(3,ge = 1, le = 10)
 
 @app.post('/search')
-def post_search(request: SearchRequest):
-    embeddings = vo_client.embed([request.query], model = 'voyage-3', input_type = 'query').embeddings
+def post_search(body: SearchRequest, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    check_rate_limit(request.client.host)
+    embeddings = vo_client.embed([body.query], model = 'voyage-3', input_type = 'query').embeddings
     coll = chroma_client.get_collection('notes')
     result = coll.query(
         query_embeddings = embeddings,
-        n_results = request.n_results
+        n_results = body.n_results
     )
     return {
-        'query': request.query,
-        'n_results': request.n_results,
+        'query': body.query,
+        'n_results': body.n_results,
         'documents': result['documents'][0]
     }
 
 class StreamRequest(BaseModel):
-    message: str
+    message: str = Field(...,min_length= 1, max_length= 10000)
 
-async def stream_claude(request: StreamRequest):
+async def stream_claude(body: StreamRequest):
     async with ant_client.messages.stream(
         model = 'claude-haiku-4-5-20251001',
         max_tokens = 1024,
         system = 'You are a helpful assistant.',
-        messages = [{'role':'user', 'content': request.message}]
+        messages = [{'role':'user', 'content': body.message}]
     ) as stream:
         async for text in stream.text_stream:
             yield f'data: {text}\n\n'
     yield 'data: [DONE]\n\n'
 
 @app.post('/stream')
-async def post_stream(request: StreamRequest):
+async def post_stream(body: StreamRequest, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    check_rate_limit(request.client.host)
     return StreamingResponse(
-        stream_claude(request),
+        stream_claude(body),
         media_type='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
