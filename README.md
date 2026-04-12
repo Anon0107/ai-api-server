@@ -26,6 +26,32 @@ cp .env.example .env  # fill in your API keys
 py -3.11 -m uvicorn server:app --reload
 ```
 
+## Security
+
+All endpoints require an `api-key` header:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H 'Content-Type: application/json' \
+  -H 'api-key: YOUR_KEY' \
+  -d '{"message": "hello"}'
+```
+
+**Rate limiting:** 10 requests/minute per IP. Exceeding returns `429`.
+
+**Input validation:** All fields have min/max constraints enforced by Pydantic. Invalid input returns `422`.
+
+**Break test results:**
+
+| Test | Status |
+|------|--------|
+| No API key | 401 |
+| Wrong API key | 401 |
+| Empty message | 422 |
+| Message > 10000 chars | 422 |
+| Valid request | 200 |
+| 11th request in 60s | 429 |
+
 ## Notes
 
 - `/search` uses Voyage AI's sync client — blocking under high load. Acceptable for current scale.
