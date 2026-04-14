@@ -4,3 +4,4 @@ anthropic
 voyageai
 chromadb
 python-dotenv
+uvicorn
