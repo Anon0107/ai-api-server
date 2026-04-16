@@ -176,7 +176,7 @@ async def stream_claude(body: StreamRequest):
     ) as stream:
         async for text in stream.text_stream:
             yield f'data: {text}\n\n'
-        full_reply = stream.get_full_text()
+        full_reply = await stream.get_full_text()
     history.append({'role': 'assistant', 'content': full_reply})
     yield 'data: [DONE]\n\n'
 
