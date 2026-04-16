@@ -49,6 +49,7 @@ if prompt:
         st.markdown(prompt)
 
     with st.chat_message('assistant'):
-        reply = st.write_stream(stream_response(prompt, st.session_state.stream_session_id))
+        with st.spinner('Thinking...'):
+            reply = st.write_stream(stream_response(prompt, st.session_state.stream_session_id))
 
     st.session_state.stream_messages.append({'role': 'assistant', 'content': reply})
