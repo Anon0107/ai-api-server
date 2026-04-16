@@ -1,7 +1,8 @@
 fastapi
-pydantic
+uvicorn
 anthropic
 voyageai
 chromadb
 python-dotenv
-uvicorn
+requests
+streamlit
