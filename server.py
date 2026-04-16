@@ -111,19 +111,48 @@ def post_search(body: SearchRequest, request: Request, api_key: str = Header(Non
         'n_results': body.n_results,
         'documents': result['documents'][0]
     }
+import uuid
+
+conversation_history: dict[str, list] = defaultdict(list)
 
 class StreamRequest(BaseModel):
-    message: str = Field(...,min_length= 1, max_length= 10000)
+    message: str = Field(..., min_length=1, max_length=10000)
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1, max_length=100)
 
 async def stream_claude(body: StreamRequest):
+    history = conversation_history[body.session_id]
+    history.append({'role': 'user', 'content': body.message})
+
+    est_tokens = await ant_client.messages.count_tokens(
+        model='claude-haiku-4-5-20251001',
+        system='You are a helpful assistant.',
+        messages=history
+    )
+    if est_tokens.input_tokens > 4000:
+        last_message = history.pop()
+        history.append({'role': 'user', 'content': 'Summarize this conversation into a single concise message. Only respond with the message'})
+        summary_resp = await ant_client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=512,
+            system='You are a helpful assistant.',
+            messages=history
+        )
+        summary = next((b.text for b in summary_resp.content if b.type == 'text'), '')
+        conversation_history[body.session_id] = [
+            {'role': 'user', 'content': f'Context summary: {summary}. {last_message["content"]}'}
+        ]
+        history = conversation_history[body.session_id]
+
     async with ant_client.messages.stream(
-        model = 'claude-haiku-4-5-20251001',
-        max_tokens = 1024,
-        system = 'You are a helpful assistant.',
-        messages = [{'role':'user', 'content': body.message}]
+        model='claude-haiku-4-5-20251001',
+        max_tokens=1024,
+        system='You are a helpful assistant.',
+        messages=history
     ) as stream:
         async for text in stream.text_stream:
             yield f'data: {text}\n\n'
+        full_reply = stream.get_full_text()
+    history.append({'role': 'assistant', 'content': full_reply})
     yield 'data: [DONE]\n\n'
 
 @app.post('/stream')
@@ -135,6 +164,12 @@ async def post_stream(body: StreamRequest, request: Request, api_key: str = Head
         media_type='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
-            'X-Accel-Buffering': 'no', 
+            'X-Accel-Buffering': 'no',
         },
     )
+
+@app.delete('/stream/{session_id}')
+async def clear_stream(session_id: str, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    conversation_history.pop(session_id, None)
+    return {'session_id': session_id, 'cleared': True}
