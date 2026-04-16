@@ -11,6 +11,7 @@ import json
 import time
 import asyncio
 from collections import defaultdict
+import uuid
 
 load_dotenv()
 app = FastAPI()
@@ -23,6 +24,7 @@ chroma_client = chromadb.CloudClient(
 ant_client = anthropic.AsyncAnthropic()
 request_log = defaultdict(list)
 API_KEY = os.getenv('API_KEY')
+conversation_history = defaultdict(list)
 
 def check_rate_limit(client_ip: str):
     current = time.time()
@@ -34,22 +36,48 @@ def check_rate_limit(client_ip: str):
 
 def check_auth(api_key: str = Header(None)):
     if api_key != API_KEY:
-        raise(HTTPException(status_code = 401, detail= 'Invalid or missing APi key'))
+        raise(HTTPException(status_code = 401, detail= 'Invalid or missing API key'))
 
 class ChatRequest(BaseModel):
     message: str = Field(...,min_length = 1,max_length = 10000)
+    session_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=1, max_length=100)
 
 @app.post('/chat')
 async def post_chat(body: ChatRequest, request: Request, api_key: str = Header(None)):
     check_auth(api_key)
     check_rate_limit(request.client.host)
+
+    history = conversation_history[body.session_id]
+    history.append({'role': 'user', 'content': body.message})
+
+    est_tokens = await ant_client.messages.count_tokens(
+        model='claude-haiku-4-5-20251001',
+        system='You are a helpful assistant.',
+        messages=history
+    )
+    if est_tokens.input_tokens > 4000:
+        last_message = history.pop()
+        history.append({'role': 'user', 'content': 'Summarize this conversation into a single concise message. Only respond with the message'})
+        summary_resp = await ant_client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=512,
+            system='You are a helpful assistant.',
+            messages=history
+        )
+        summary = next((b.text for b in summary_resp.content if b.type == 'text'), '')
+        conversation_history[body.session_id] = [
+            {'role': 'user', 'content': f'Context summary: {summary}. {last_message["content"]}'}
+        ]
+        history = conversation_history[body.session_id]
+
     response = await ant_client.messages.create(
         model='claude-haiku-4-5-20251001',
         max_tokens=1024,
-        system='You are a helpful assistant that responds gracefully.',
-        messages=[{'role': 'user', 'content': body.message}]
+        system='You are a helpful assistant.',
+        messages=history
     )
     reply = next((b.text for b in response.content if b.type == 'text'), 'No response')
+    history.append({'role': 'assistant', 'content': reply})
     return {
         'message': body.message,
         'response': reply,
@@ -111,9 +139,6 @@ def post_search(body: SearchRequest, request: Request, api_key: str = Header(Non
         'n_results': body.n_results,
         'documents': result['documents'][0]
     }
-import uuid
-
-conversation_history: dict[str, list] = defaultdict(list)
 
 class StreamRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
@@ -167,6 +192,12 @@ async def post_stream(body: StreamRequest, request: Request, api_key: str = Head
             'X-Accel-Buffering': 'no',
         },
     )
+
+@app.delete('/chat/{session_id}')
+async def clear_chat(session_id: str, request: Request, api_key: str = Header(None)):
+    check_auth(api_key)
+    conversation_history.pop(session_id, None)
+    return {'session_id': session_id, 'cleared': True}
 
 @app.delete('/stream/{session_id}')
 async def clear_stream(session_id: str, request: Request, api_key: str = Header(None)):
