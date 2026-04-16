@@ -6,10 +6,12 @@ A FastAPI backend exposing AI-powered endpoints built with Claude Haiku, Voyage 
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/chat` | Send a message, get a Claude response |
+| POST | `/chat` | Non-streaming chat with per-session conversation history |
+| DELETE | `/chat/{session_id}` | Clear chat history for a specific session |
 | POST | `/analyze` | Analyze an article, returns structured JSON (summary, key topics) |
 | POST | `/search` | Semantic search over ChromaDB using Voyage AI embeddings |
-| POST | `/stream` | Streaming chat via Server-Sent Events — tokens arrive in real time |
+| POST | `/stream` | Streaming chat via Server-Sent Events with per-session conversation history |
+| DELETE | `/stream/{session_id}` | Clear stream history for a specific session |
 
 ## Stack
 
@@ -34,7 +36,7 @@ All endpoints require an `api-key` header:
 curl -X POST http://localhost:8000/chat \
   -H 'Content-Type: application/json' \
   -H 'api-key: YOUR_KEY' \
-  -d '{"message": "hello"}'
+  -d '{"message": "hello", "session_id": "optional-session-id"}'
 ```
 
 **Rate limiting:** 10 requests/minute per IP. Exceeding returns `429`.
