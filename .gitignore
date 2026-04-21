@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache
+.pytest_cache/
 .chromadb/
 .streamlit/secrets.toml
+venv/

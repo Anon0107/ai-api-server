@@ -1,8 +1,9 @@
 .env
-.git
+.git/
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache
 .chromadb/
 .streamlit/secrets.toml
+venv/
