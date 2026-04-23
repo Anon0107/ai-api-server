@@ -9,7 +9,6 @@ import json
 
 load_dotenv()
 ant_client = anthropic.Anthropic()
-vo_client = voyageai.Client()
 vo_client = voyageai.Client(api_key=os.getenv('VOYAGE_API_KEY'))
 chroma_client = chromadb.CloudClient(
     api_key= os.getenv('CHROMA_API_KEY'),

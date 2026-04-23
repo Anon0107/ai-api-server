@@ -8,10 +8,6 @@ import tempfile
 import os
 
 check_password()
-st.write(os.getenv('CHROMA_API_KEY') is None)
-st.write(os.getenv('CHROMA_DATABASE') is None)
-st.write(os.getenv('CHROMA_TENANT') is None)
-st.write(os.getenv('VOYAGE_API_KEY') is None)
 if 'search_session_id' not in st.session_state:
     st.session_state.search_session_id = str(uuid.uuid4())
 if 'ingested_files' not in st.session_state:
