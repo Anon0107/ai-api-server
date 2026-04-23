@@ -6,3 +6,5 @@ chromadb
 python-dotenv
 requests
 streamlit
+langgraph
+pypdf
