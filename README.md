@@ -27,7 +27,7 @@ A FastAPI backend exposing AI-powered endpoints built with Claude Haiku, Voyage 
 |------|-------------|
 | Chat | Conversational assistant with session history |
 | Stream | Same assistant with token-by-token streaming via SSE |
-| Document Q&A | Semantic search over a BanG Dream database |
+| Document Q&A | Semantic search over uploaded document |
 | News Analyzer | Extracts summary and key topics from any article |
 
 ## Setup
