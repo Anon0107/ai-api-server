@@ -9,6 +9,6 @@ st.markdown('''
 **Pages:**
 - 💬 Chat — conversational assistant with history
 - 🌊 Stream — same assistant with streaming responses
-- 🔍 BanG Dream Document Q&A — semantic search over BanG Dream wiki data
+- 🔍 Document Q&A — semantic search over uploaded document
 - 📰 News Analyzer — extract summary and topics from any article
 ''')
